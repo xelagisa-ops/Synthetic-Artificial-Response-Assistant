@@ -1,4 +1,4 @@
-#cd "D:\Visual Studio Projects\Projects\SARA Voice PC Control" 
+#cd "D:\Visual Studio Projects\Projects\SARA Voice PC Control"
 #.\venv\Scripts\Activate.ps1 
 
 import os
@@ -15,21 +15,25 @@ import re
 import glob
 import webbrowser
 import math
+from datetime import datetime
 
 import torch
 torch.jit.script = lambda fn: fn
 
-import subprocess
+# ==========================================
+# CENTRALIZED PATH CONFIGURATION (PORTABLE)
+# ==========================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+WALLPAPER_DIR = os.path.join(BASE_DIR, "wallpapers")
+FAN_CONTROL_BATCH = os.path.join(BASE_DIR, "FanControl.Releases-master", "FanControl.Releases-master", "StartFanControl.bat")
+FAN_CONTROL_PATH = os.path.join(BASE_DIR, "FanControl.Releases-master", "FanControl.Releases-master", "FanControl.exe")
+CONFIG_DIR = os.path.join(BASE_DIR, "FanControl.Releases-master", "FanControl.Releases-master", "Configurations")
 
-# Path to your existing batch file
-bat_path = r"D:\Visual Studio Projects\Projects\SARA Voice PC Control\FanControl.Releases-master\FanControl.Releases-master\StartFanControl.bat"
-
-# Run the batch file in the background without popping up an extra command window
-subprocess.Popen(
-    ["cmd.exe", "/c", bat_path], creationflags=subprocess.CREATE_NO_WINDOW
-)
-
-from datetime import datetime
+# Run FanControl startup batch file in the background without a command window
+if os.path.exists(FAN_CONTROL_BATCH):
+    subprocess.Popen(
+        ["cmd.exe", "/c", FAN_CONTROL_BATCH], creationflags=subprocess.CREATE_NO_WINDOW
+    )
 
 # Try importing sounddevice for PC mic support
 try:
@@ -122,7 +126,7 @@ def check_single_instance():
         except socket.error:
             sys.exit(0)
 
-# Global UI / Audio References
+# Global UI / Audio References & Thread Synchronization Lock
 main_window_ref = None
 tts_module = None
 whisper_model = None
@@ -132,11 +136,12 @@ is_audio_playing = False
 is_greeting_played = False
 awake_until_time = 0
 
+state_lock = threading.Lock()
+
 spectrum_heights = [14.0] * 32
 audio_amplitude = 0.0
 audio_lock = threading.Lock()
 
-WALLPAPER_DIR = r"D:\Visual Studio Projects\Projects\SARA Voice PC Control\wallpapers"
 wallpaper_images = []
 
 class UIBridge(QObject):
@@ -214,10 +219,9 @@ def load_ai_models_in_background():
         log_to_console("[System] RVC Voice Model loaded successfully.")
         update_ai_status("AI: Sara Ready", color="#2ecc71")
         
-        bat_path = r"D:\Visual Studio Projects\Projects\SARA Voice PC Control\FanControl.Releases-master\FanControl.Releases-master\StartFanControl.bat"
-        if os.path.exists(bat_path):
+        if os.path.exists(FAN_CONTROL_BATCH):
             log_to_console("[System] Triggering startup batch file to fix lighting...")
-            subprocess.Popen([bat_path], shell=True)
+            subprocess.Popen([FAN_CONTROL_BATCH], shell=True)
 
         trigger_voice_alert("connect")
     except Exception as e:
@@ -260,9 +264,10 @@ def trigger_voice_alert(message_type, custom_text=None, is_pure_wake=False):
     global is_audio_playing, is_greeting_played
 
     if message_type == "connect":
-        if is_greeting_played:
-            return
-        is_greeting_played = True
+        with state_lock:
+            if is_greeting_played:
+                return
+            is_greeting_played = True
 
     def _run():
         global is_audio_playing, audio_amplitude
@@ -287,7 +292,7 @@ def trigger_voice_alert(message_type, custom_text=None, is_pure_wake=False):
             log_to_chat("Sara", spoken_text)
 
             if audio_path and os.path.exists(audio_path):
-                with audio_lock:
+                with audio_lock, state_lock:
                     is_audio_playing = True
 
                 try:
@@ -298,7 +303,7 @@ def trigger_voice_alert(message_type, custom_text=None, is_pure_wake=False):
         except Exception as e:
             log_to_console(f"Audio Alert Error: {e}")
         finally:
-            with audio_lock:
+            with audio_lock, state_lock:
                 is_audio_playing = False
                 audio_amplitude = 0.0
             log_to_chat("System", "waiting for instruction")
@@ -315,9 +320,6 @@ def fix_glued_command(text):
         for browser in ['operagx', 'opera', 'chrome', 'edge', 'firefox', 'google']:
             text = re.sub(rf'\b{prep}{browser}\b', f' {prep} {browser}', text)
     return text
-
-FAN_CONTROL_PATH = r"D:\Visual Studio Projects\Projects\SARA Voice PC Control\FanControl.Releases-master\FanControl.Releases-master\FanControl.exe"
-CONFIG_DIR = r"D:\Visual Studio Projects\Projects\SARA Voice PC Control\FanControl.Releases-master\FanControl.Releases-master\Configurations"
 
 def check_fan_action(command_text):
     command_lower = command_text.lower()
@@ -605,7 +607,9 @@ def process_transcript(spoken_text):
     if not clean_text or len(clean_text) < 2:
         return
 
-    is_currently_awake = time.time() < awake_until_time
+    with state_lock:
+        is_currently_awake = time.time() < awake_until_time
+
     log_to_console(f"[PC Mic Heard]: '{clean_text}'")
 
     wake_patterns = ["sara", "sarah", "hoshikawa", "hoshkawa"]
@@ -639,7 +643,8 @@ def process_transcript(spoken_text):
     chat_display_text = sanitize_chat_display_text(normalized_spoken)
 
     if has_wake_word and is_pure_name:
-        awake_until_time = time.time() + 30.0
+        with state_lock:
+            awake_until_time = time.time() + 30.0
         log_to_console("[System] Pure name called. Sara is awake for the next single instruction.")
         log_to_chat("You", "Sara")
         trigger_voice_alert("command", is_pure_wake=True)
@@ -665,12 +670,14 @@ def process_transcript(spoken_text):
         response_message = random.choice(general_responses)
 
     if has_wake_word:
-        awake_until_time = 0
+        with state_lock:
+            awake_until_time = 0
         log_to_console("[System] Wake word + command recognized.")
         log_to_chat("You", chat_display_text)
         trigger_voice_alert("command", custom_text=response_message, is_pure_wake=False)
     elif is_currently_awake:
-        awake_until_time = 0 
+        with state_lock:
+            awake_until_time = 0 
         log_to_console("[System] Single follow-up instruction processed.")
         log_to_chat("You", chat_display_text)
         trigger_voice_alert("command", custom_text=response_message, is_pure_wake=False)
@@ -692,7 +699,9 @@ def pc_mic_listener_loop():
 
     def callback(indata, frames, time_info, status):
         nonlocal is_speaking, silent_chunks_count, recording_buffer
-        if is_audio_playing:
+        with state_lock:
+            playing = is_audio_playing
+        if playing:
             return
 
         audio_flat = indata.flatten()
@@ -808,13 +817,11 @@ class SaraRibbon(QWidget):
 
         painter.save()
 
-        # Tilt 30 degrees left (counter-clockwise) around the center (32, 32)
         cx, cy = self.width() / 2.0, self.height() / 2.0
         painter.translate(cx, cy)
         painter.rotate(-30)
         painter.translate(-cx, -cy)
 
-        # Right Ear (Yellow Gradient) - Drawn first so it's in the back
         path_right = QPainterPath()
         path_right.moveTo(32, 54)
         path_right.cubicTo(28, 40, 32, 23, 42, 12)
@@ -828,7 +835,6 @@ class SaraRibbon(QWidget):
         painter.setBrush(grad_right)
         painter.drawPath(path_right)
 
-        # Left Ear (Pink Gradient) - Drawn last so it's in the front
         path_left = QPainterPath()
         path_left.moveTo(32, 54)
         path_left.cubicTo(20, 43, 12, 31, 22, 12)
@@ -872,11 +878,15 @@ class SynthesizerWidget(QWidget):
         start_x = max(0, (width - total_width) / 2)
 
         for i in range(num_bars):
-            if is_audio_playing and audio_amplitude > 0.001:
+            with state_lock:
+                playing = is_audio_playing
+                amp = audio_amplitude
+
+            if playing and amp > 0.001:
                 center_distance = abs(i - (num_bars / 2)) / (num_bars / 2)
                 individual_multiplier = 1.0 - (center_distance * 0.3)
                 boost = random.uniform(0.8, 1.4)
-                target_h = int(min(max(audio_amplitude * 180 * individual_multiplier * boost, 4), height - 44))
+                target_h = int(min(max(amp * 180 * individual_multiplier * boost, 4), height - 44))
             else:
                 phase = time.time() * 4.5 + (i * 0.28)
                 target_h = int(6 + 5 * abs(math.sin(phase)))
@@ -914,14 +924,12 @@ class RoundedProgressBar(QProgressBar):
         painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
         painter.setPen(Qt.NoPen)
 
-        # Leave a tiny margin so the rounded edge is never clipped.
         rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
         if rect.width() <= 2 or rect.height() <= 2:
             return
 
         radius = rect.height() / 2.0
 
-        # Dark lower edge / shadow gives the track a subtle 3D depth.
         shadow_rect = rect.translated(0, 0)
         shadow_gradient = QLinearGradient(shadow_rect.topLeft(), shadow_rect.bottomLeft())
         shadow_gradient.setColorAt(0.0, QColor(180, 154, 75, 100))
@@ -929,7 +937,6 @@ class RoundedProgressBar(QProgressBar):
         painter.setBrush(shadow_gradient)
         painter.drawRoundedRect(shadow_rect, radius, radius)
 
-        # Recessed track with a soft top-to-bottom gradient.
         track_gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
         track_gradient.setColorAt(0.0, QColor("#FFF7D6"))
         track_gradient.setColorAt(0.45, QColor("#E9DCA8"))
@@ -947,7 +954,6 @@ class RoundedProgressBar(QProgressBar):
         if fill_width <= 0.0:
             return
 
-        # Clip the fill to the full pill shape, preventing square corners.
         pill_path = QPainterPath()
         pill_path.addRoundedRect(rect, radius, radius)
         painter.save()
@@ -962,7 +968,6 @@ class RoundedProgressBar(QProgressBar):
         painter.setBrush(fill_gradient)
         painter.drawRect(fill_rect)
 
-        # Glossy upper highlight and warm lower shading for a 3D appearance.
         highlight_rect = QRectF(rect.left(), rect.top(), fill_width, rect.height() * 0.34)
         highlight_gradient = QLinearGradient(highlight_rect.topLeft(), highlight_rect.bottomLeft())
         highlight_gradient.setColorAt(0.0, QColor(255, 255, 255, 150))
@@ -979,24 +984,19 @@ class RoundedProgressBar(QProgressBar):
         painter.drawRect(lower_rect)
         painter.restore()
 
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         load_wallpaper_list()
 
         self.setWindowTitle("Hoshikawa Sara Voice Assistant")
-        base_dir = os.path.dirname(os.path.abspath(__file__))
         icon_candidates = [
-            os.path.join(base_dir, "Icon", "sara_app_icon_generated_highres.ico"),
-            os.path.join(base_dir, "Icon", "sara_app_icon_clean.ico"),
-            os.path.join(base_dir, "Icon", "sara_app_icon.ico"),
-            os.path.join(base_dir, "sara_app_icon_generated_highres.ico"),
-            os.path.join(base_dir, "sara_app_icon_clean.ico"),
-            os.path.join(base_dir, "sara_app_icon.ico"),
-            os.path.join(base_dir, "wallpapers", "sara_app_icon_generated_highres.ico"),
-            os.path.join(base_dir, "wallpapers", "sara_app_icon_clean.ico"),
-            os.path.join(base_dir, "wallpapers", "sara_app_icon.ico"),
+            os.path.join(BASE_DIR, "Icon", "sara_app_icon_generated_highres.ico"),
+            os.path.join(BASE_DIR, "Icon", "sara_app_icon_clean.ico"),
+            os.path.join(BASE_DIR, "Icon", "sara_app_icon.ico"),
+            os.path.join(BASE_DIR, "sara_app_icon_generated_highres.ico"),
+            os.path.join(BASE_DIR, "sara_app_icon_clean.ico"),
+            os.path.join(BASE_DIR, "sara_app_icon.ico"),
             os.path.join(WALLPAPER_DIR, "sara_app_icon_generated_highres.ico"),
             os.path.join(WALLPAPER_DIR, "sara_app_icon_clean.ico"),
             os.path.join(WALLPAPER_DIR, "sara_app_icon.ico"),
@@ -1046,9 +1046,6 @@ class MainWindow(QMainWindow):
             }
         """ + scrollbar_stylesheet
 
-        # Sara high-resolution generated status bar asset with live progress overlays.
-        # Match the artwork width to the chat log box width (300 px) while preserving
-        # the original artwork aspect ratio.
         chat_box_width = 300
         artwork_width, artwork_height = 520, 162
         artwork_scale = chat_box_width / artwork_width
@@ -1059,11 +1056,9 @@ class MainWindow(QMainWindow):
         self.status_box.setGeometry(20, 20, status_width, status_height)
         self.status_box.setStyleSheet("QFrame { background: transparent; border: none; }")
 
-        base_dir = os.path.dirname(os.path.abspath(__file__))
         status_asset_candidates = [
-            os.path.join(base_dir, "Icon", "sara_statusbar_generated_highres.png"),
-            os.path.join(base_dir, "sara_statusbar_generated_highres.png"),
-            os.path.join(base_dir, "wallpapers", "sara_statusbar_generated_highres.png"),
+            os.path.join(BASE_DIR, "Icon", "sara_statusbar_generated_highres.png"),
+            os.path.join(BASE_DIR, "sara_statusbar_generated_highres.png"),
             os.path.join(WALLPAPER_DIR, "sara_statusbar_generated_highres.png"),
         ]
         status_asset_path = next((p for p in status_asset_candidates if os.path.exists(p)), None)
@@ -1076,22 +1071,14 @@ class MainWindow(QMainWindow):
             self.status_art.setPixmap(QPixmap(status_asset_path))
         self.status_art.lower()
 
-        # The artwork contains a static bar. Hide that portion with a rounded
-        # track, then place a rounded determinate progress bar over it.
-        # Original bar coordinates are scaled from the 520x162 artwork size so
-        # the live overlay stays aligned after the artwork is reduced to 300 px wide.
         bar_x = round(195 * artwork_scale)
         bar_y = round(105 * artwork_scale)
         bar_w = round(280 * artwork_scale)
         bar_h = round(28 * artwork_scale)
 
-        # No separate grey backdrop: RoundedProgressBar paints its own 3D track.
-
         self.sara_ribbon = SaraRibbon(self)
         self.sara_ribbon.hide()
 
-        # Do not draw floating status text over the artwork. The generated image
-        # already contains its own labels, while the progress bar remains live.
         self.ai_text_lbl = QLabel(self.status_box)
         self.ai_text_lbl.hide()
         self.esp_text_lbl = QLabel(self.status_box)
@@ -1105,7 +1092,6 @@ class MainWindow(QMainWindow):
         self.status_progress.setAttribute(Qt.WA_TranslucentBackground, True)
         self.status_progress.raise_()
 
-        # Each subsystem advances independently; the displayed bar is their average.
         self.ai_progress_value = 0
         self.esp_progress_value = 0
         self.ai_ready = False
@@ -1167,8 +1153,6 @@ class MainWindow(QMainWindow):
         ui_bridge.esp_status_signal.connect(self.update_esp_status_text)
 
     def animate_loading_status(self):
-        # Determinate-looking progress: advance gradually and pause at 92% until
-        # the corresponding subsystem reports Ready. It never loops backwards.
         if not self.ai_ready and not self.ai_error:
             self.ai_progress_value = min(92, self.ai_progress_value + 4)
         if not self.esp_ready and not self.esp_error:
@@ -1344,25 +1328,16 @@ class MainWindow(QMainWindow):
         self.refresh_combined_progress()
 
     def toggle_system_logs(self):
-        is_visible = self.console_widget.isVisible()
-        self.console_widget.setVisible(not is_visible)
-        
-        # Switch arrow direction: ▲ when closed, ▼ when open
-        self.log_toggle_btn.setText("▲" if is_visible else "▼")
-
-    def toggle_system_logs(self):
         # Prevent spam-clicking while animating
         if hasattr(self, 'anim_group') and self.anim_group.state() == QParallelAnimationGroup.Running:
             return
 
         self.anim_group = QParallelAnimationGroup(self)
 
-        # Animation for the log box
         console_anim = QPropertyAnimation(self.console_widget, b"geometry")
         console_anim.setDuration(250)
         console_anim.setEasingCurve(QEasingCurve.InOutQuad)
 
-        # Animation for the toggle button
         btn_anim = QPropertyAnimation(self.log_toggle_btn, b"geometry")
         btn_anim.setDuration(250)
         btn_anim.setEasingCurve(QEasingCurve.InOutQuad)
@@ -1371,21 +1346,17 @@ class MainWindow(QMainWindow):
         current_btn_rect = self.log_toggle_btn.geometry()
 
         if current_console_rect.height() > 20:
-            # Collapse downwards: console anchors at y=660, height shrinks to 0
             console_anim.setStartValue(current_console_rect)
             console_anim.setEndValue(QRect(840, 660, 300, 0))
 
-            # Button follows downwards (from y=536 to y=636)
             btn_anim.setStartValue(current_btn_rect)
             btn_anim.setEndValue(QRect(950, 636, 80, 15))
 
             self.log_toggle_btn.setText("▲")
         else:
-            # Expand upwards: console top pushes back to y=560, height expands to 100
             console_anim.setStartValue(current_console_rect)
             console_anim.setEndValue(QRect(840, 560, 300, 100))
 
-            # Button follows upwards (from y=636 back to y=536)
             btn_anim.setStartValue(current_btn_rect)
             btn_anim.setEndValue(QRect(950, 536, 80, 15))
 
