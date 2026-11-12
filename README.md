@@ -1,15 +1,17 @@
 <div align="center">
 
-# SARA: Hoshikawa Sara Voice Assistant & PC Control Center
-### An advanced, local-first AI desktop voice companion and hardware telemetry control system.
+# SARA
+### Hoshikawa Sara Voice Assistant & PC Control Center
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-CUDA-ee4c2c.svg?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![PySide6](https://img.shields.io/badge/GUI-PySide6-41CD52.svg?style=flat-square&logo=qt&logoColor=white)](https://www.qt.io/)
-[![Flask](https://img.shields.io/badge/Backend-Flask-000000.svg?style=flat-square&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
+**A local-first desktop companion for voice interaction, PC automation, and hardware monitoring.**
 
-[Overview](#overview) • [Key Features](#key-features) • [System Architecture](#system-architecture) • [Tech Stack](#tech-stack) • [Project Structure](#project-structure) • [Installation](#installation) • [Configuration](#configuration) • [Usage & Commands](#usage--commands) • [Troubleshooting](#troubleshooting) • [Roadmap](#roadmap) • [License](#license)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-CUDA-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![PySide6](https://img.shields.io/badge/GUI-PySide6-41CD52?style=for-the-badge&logo=qt&logoColor=white)](https://www.qt.io/)
+[![Flask](https://img.shields.io/badge/Backend-Flask-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
+
+[Overview](#overview) · [Features](#features) · [Architecture](#architecture) · [Tech Stack](#technology-stack) · [Setup](#getting-started) · [Usage](#usage) · [Troubleshooting](#troubleshooting) · [Roadmap](#roadmap)
 
 </div>
 
@@ -17,83 +19,207 @@
 
 ## Overview
 
-SARA (Hoshikawa Sara Voice Assistant & PC Control Center) is a fully customized, local-first desktop companion application built to merge interactive character persona synthesis with deep operating system and hardware control. Designed with an immersive PySide6 graphical user interface, dual-column dynamic wallpaper slideshows, and real-time audio reactivity, SARA bridges local artificial intelligence pipelines with physical hardware monitoring.
+**SARA** is a custom Windows desktop assistant that combines voice-based interaction with practical PC controls and hardware telemetry. It uses a PySide6 interface, local speech-recognition processing, and a voice-synthesis pipeline to provide an interactive desktop experience.
 
-The system integrates continuous Voice Activity Detection (VAD) microphone listening, local speech-to-text transcription via Faster-Whisper, Retrieval-Based Voice Conversion (RVC) voice styling, and asynchronous text-to-speech synthesis. Beyond conversational interaction, SARA natively manages system processes, dynamic application execution, browser URL routing, thermal cooling profiles via FanControl, and network-level adblocking telemetry feeds from an external ESP32 micro-controller.
+Alongside conversational features, SARA can launch applications and websites, switch supported FanControl profiles, and receive telemetry from an external ESP32-based device through a lightweight Flask server.
 
----
+> **Design goals:** local-first processing, a responsive desktop interface, and a single place to interact with PC and connected-device features.
 
-## Key Features
+## Features
 
-### 1. Advanced Speech & AI Pipelines
-* **Local STT Processing:** Utilizes Faster-Whisper (Medium model optimized via CUDA and INT8-Float16 precision) for low-latency, high-accuracy offline speech recognition.
-* **Voice Conversion & Synthesis:** Integrates Edge-TTS paired with local Retrieval-Based Voice Conversion (RVC) weights to render authentic character voice output.
-* **Wake Word & Sleep State Management:** Features session-aware state tracking supporting pure name wake triggers and time-bounded follow-up instruction windows.
+### Voice interaction
 
-### 2. Immersive Desktop Graphical User Interface
-* **Custom PySide6 UI:** Built from the ground up with custom rounded progress bars, styled ribbon widgets, and dynamic layout scaling.
-* **Real-time Audio Spectrum Visualizer:** Renders synchronized 32-bar audio frequency reactivity directly linked to active audio output amplitude.
-* **Automated Wallpaper Transitions:** Implements custom smooth dual-column sliding transition timers across localized wallpaper asset directories.
+- **Speech recognition:** Uses Faster-Whisper for local speech-to-text processing, with CUDA acceleration where supported.
+- **Voice output:** Combines Edge-TTS with local Retrieval-Based Voice Conversion (RVC) model weights.
+- **Wake-word handling:** Supports name-based wake triggers and a time-limited follow-up instruction window.
+- **Audio feedback:** Displays live audio-reactive visualisation in the desktop interface.
 
-### 3. Hardware & System Automation
-* **Dynamic Thermal Profile Switching:** Instantly commands FanControl executables and scheduled Windows tasks to toggle cooling profiles (Normal, Max, Custom).
-* **Dynamic Application & URL Launcher:** Employs recursive filesystem searching to locate clean executables (.exe) or shortcuts (.lnk) for app launching, alongside intelligent browser-targeted URL routing (Chrome, Opera GX, Edge).
-* **IoT Telemetry Integration:** Houses a Flask background routing server to ingest live heartbeats and connection states from external ESP32-based DNS sinkhole adblockers.
+### Desktop interface
 
----
+- **PySide6 GUI:** Custom widgets, rounded progress bars, ribbon-style elements, and dynamic layout scaling.
+- **Audio spectrum visualiser:** Displays 32 frequency bars that react to audio output.
+- **Wallpaper transitions:** Rotates wallpapers from local asset directories using dual-column sliding transitions.
 
-## System Architecture
+### PC and hardware control
 
-The application operates on a multi-threaded asynchronous architecture separating GUI rendering, background audio monitoring, and local web API routing.
+- **Fan profiles:** Switches between configured FanControl profiles, such as Normal, Max, and Custom.
+- **Application launcher:** Searches for executable files (`.exe`) and shortcuts (`.lnk`) to launch installed applications.
+- **Browser routing:** Opens URLs using supported browsers, including Chrome, Opera GX, and Edge.
+- **ESP32 telemetry:** Receives heartbeat and connection-status updates from an external ESP32-based DNS sinkhole/ad-blocking device through the Flask server.
+
+## Architecture
+
+SARA separates the desktop interface, audio processing, command handling, and local API routing so that background tasks can run without blocking the GUI.
 
 ```mermaid
-graph TD
-    A[Microphone Input Stream] -->|VAD Chunking| B(Faster-Whisper STT Model)
-    B -->|Transcribed Text| C{Intent & Wake Word Processor}
-    C -->|Wake / Command Match| D[Flask Backend Server]
-    D -->|REST / Heartbeat| E[ESP32 Adblocker & IoT Devices]
-    C -->|Hardware Action| F[FanControl / Subprocess Launcher]
-    C -->|Response Generation| G[Edge-TTS & RVC Voice Engine]
-    G -->|Audio Stream & Reactivity| H[PySide6 UI & Synthesizer Visualizer]
+flowchart TD
+    A[Microphone input] --> B[VAD audio chunking]
+    B --> C[Faster-Whisper speech recognition]
+    C --> D{Wake word and intent processing}
 
-Domain,Technology / Framework,Purpose
-Core Language,Python 3.10+,Primary application runtime and concurrency management
-GUI Framework,PySide6 (Qt for Python),"Desktop window management, custom UI widgets, and render loops"
-Machine Learning,"PyTorch, Faster-Whisper, RVC",GPU-accelerated local AI inference and voice cloning
-Backend & Routing,Flask,Local HTTP server handling IoT heartbeats and external hooks
-Audio Processing,"SoundDevice, NumPy, SoundFile","Real-time audio stream capture, buffer manipulation, and analysis"
-OS Interoperability,"Win32 APIs, Subprocesses, Glob","Low-level process control, window handle management, and file indexing"
+    D -->|Voice response| E[Edge-TTS and RVC]
+    E --> F[Audio output]
+    F --> G[PySide6 interface and visualiser]
 
+    D -->|PC command| H[System command handler]
+    H --> I[FanControl]
+    H --> J[Application and browser launcher]
+
+    K[ESP32 device] <-->|Heartbeat and telemetry| L[Flask API server]
+    L --> G
+```
+
+## Technology Stack
+
+| Area | Technology | Role |
+|---|---|---|
+| Language | Python 3.10+ | Main application logic and task orchestration |
+| Desktop GUI | PySide6 | Window, widgets, and visual feedback |
+| Speech recognition | Faster-Whisper, PyTorch | Local speech-to-text processing |
+| Voice synthesis | Edge-TTS, RVC | Speech generation and voice conversion |
+| Backend | Flask | Local API endpoints for device telemetry |
+| Audio | SoundDevice, NumPy, SoundFile | Audio capture, processing, and playback support |
+| System integration | Win32 APIs, Subprocess, Glob | Process control, application launching, and file discovery |
+| External hardware | ESP32 | Device heartbeat and telemetry source |
+
+## Project Structure
+
+```text
 SARA-Voice-PC-Control/
 │
-├── wallpapers/                   # Dynamic background image repository
-├── Icon/                         # High-resolution application icons and UI assets
-├── FanControl.Releases-master/   # Embedded hardware cooling control binaries and profiles
-├── tts_engine.py                 # RVC and Edge-TTS synthesis wrapper module
-├── adblock_monitor.py            # ESP32 telemetry monitoring module
-├── sara_core.py                  # Main application loop, GUI, and audio orchestration
-├── Start Server.bat              # Automated launcher script with dependency update checks
-└── requirements.txt              # Python package dependency manifest
+├── wallpapers/                   # Wallpaper image assets
+├── Icon/                         # Application icons and UI assets
+├── FanControl.Releases-master/   # FanControl binaries and profiles
+│
+├── tts_engine.py                 # Edge-TTS and RVC synthesis wrapper
+├── adblock_monitor.py            # ESP32 telemetry monitoring
+├── sara_core.py                  # Main GUI, audio, and application logic
+├── Start Server.bat              # Application launcher
+└── requirements.txt              # Python dependencies
+```
 
-Configuration & Customization
-Wallpapers: Place your preferred .png, .jpg, or .webp wallpapers into the wallpapers/ directory. The application automatically indexes and scales them.
+## Getting Started
 
-Fan Profiles: Configure your custom cooling profiles (Normal.json, Max.json, etc.) inside the FanControl.Releases-master/.../Configurations/ directory.
+### Requirements
 
-Voice Models: Ensure your RVC .pth model weights are placed within the designated model directory referenced by tts_engine.py.
+| Requirement | Details |
+|---|---|
+| Operating system | Windows 10 or Windows 11 (64-bit) |
+| Python | Python 3.10 or later |
+| GPU | NVIDIA GPU recommended for CUDA-accelerated inference |
+| Other software | Git; compatible NVIDIA drivers if using CUDA |
 
-Voice Interaction Examples
-Wake Word Activation: Say "Sara" or "Hoshikawa" to wake the assistant for the next single instruction window (active for 30 seconds).
+### 1. Clone the repository
 
-Hardware Control: Say "Sara, fans to max" or "Sara, fans to normal" to dynamically adjust cooling profiles.
+```bash
+git clone https://github.com/your-username/SARA-Voice-PC-Control.git
+cd SARA-Voice-PC-Control
+```
 
-App & URL Launching: Say "Sara, launch Chrome" or "Sara, open youtube.com using Opera GX" for dynamic process execution and browser routing.
+Replace `your-username` with the repository owner's GitHub username.
 
-Troubleshooting
-Audio Output Issues: Ensure your Windows default playback device matches your desired audio output endpoint. sounddevice relies directly on the active Windows default endpoint.
+### 2. Create a virtual environment
 
-Lighting Service Conflicts: Avoid running multiple conflicting RGB software suites simultaneously. Keep FanControl initialized through the single application startup pipeline to prevent SMBus collisions.
+```bash
+python -m venv venv
+```
 
-Missing Module Errors: Always ensure your virtual environment is active before invoking Python scripts manually from the terminal.
+Activate it using the command for your terminal:
 
-Roadmap[x] Local Faster-Whisper and RVC pipeline integration[x] PySide6 desktop GUI with real-time audio spectrum reactivity[x] Hardware fan control profile automation[x] ESP32 network adblocker telemetry monitoring[ ] Expanded plugin architecture for custom smart-home IoT triggers   [ ] Containerization and cross-platform desktop packaging   
+**PowerShell**
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+**Command Prompt**
+```cmd
+venv\Scripts\activate.bat
+```
+
+### 3. Install dependencies
+
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 4. Install PyTorch with CUDA support
+
+If you are using a compatible NVIDIA GPU, install the PyTorch build that matches your CUDA environment. For example, the following command installs the CUDA 12.1 build:
+
+```bash
+pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu121
+```
+
+Check the [official PyTorch installation guide](https://pytorch.org/get-started/locally/) if you need a different CUDA build.
+
+## Configuration
+
+Before launching SARA, check the following local assets and settings:
+
+| Component | Configuration |
+|---|---|
+| Wallpapers | Add `.png`, `.jpg`, or `.webp` files to `wallpapers/`. |
+| Fan profiles | Place or configure profiles such as `Normal.json` and `Max.json` in the relevant FanControl configuration directory. |
+| RVC voice model | Place the required `.pth` model weights in the model directory configured in `tts_engine.py`. |
+| ESP32 telemetry | Configure the device and network settings expected by `adblock_monitor.py`. |
+
+The exact model paths, profile names, and device settings depend on your local configuration.
+
+## Usage
+
+### Launch SARA
+
+From the project root, run:
+
+```cmd
+"Start Server.bat"
+```
+
+The launcher is intended to check/update the `edge-tts` dependency and start the application process in the background.
+
+### Voice command examples
+
+| Action | Example phrase |
+|---|---|
+| Wake SARA | “Sara” or “Hoshikawa” |
+| Set fans to maximum | “Sara, fans to max” |
+| Restore normal fan profile | “Sara, fans to normal” |
+| Launch an application | “Sara, launch Chrome” |
+| Open a URL in a browser | “Sara, open youtube.com using Opera GX” |
+
+After the wake word is detected, SARA opens a follow-up instruction window that remains active for approximately 30 seconds.
+
+## Troubleshooting
+
+| Issue | Checks |
+|---|---|
+| No audio output | Confirm that the intended device is selected as the Windows default playback device. SoundDevice uses the active audio endpoint. |
+| RGB or hardware-control conflicts | Avoid running multiple hardware-control utilities that may access the same controller or SMBus resources. |
+| Module not found | Activate the project's virtual environment and install the dependencies from `requirements.txt`. |
+| CUDA or inference issues | Confirm that the NVIDIA driver and installed PyTorch CUDA build are compatible. |
+| ESP32 telemetry not updating | Check the device's network connection and the Flask server configuration. |
+
+## Roadmap
+
+- [x] Local Faster-Whisper speech-recognition pipeline
+- [x] Edge-TTS and RVC voice-output integration
+- [x] PySide6 desktop interface with audio visualisation
+- [x] FanControl profile automation
+- [x] ESP32 telemetry monitoring
+- [ ] Expand the plugin system for custom smart-home and IoT actions
+- [ ] Add containerisation and cross-platform desktop packaging
+
+## Contributing
+
+Suggestions, bug reports, and feature requests are welcome.
+
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b feature/your-feature`.
+3. Commit your changes: `git commit -m "Add your feature"`.
+4. Push the branch: `git push origin feature/your-feature`.
+5. Open a pull request.
+
+## License
+
+SARA is distributed under the **MIT License**. See the [`LICENSE`](LICENSE) file for details.
