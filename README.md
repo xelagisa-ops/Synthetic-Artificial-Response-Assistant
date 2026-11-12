@@ -29,3 +29,53 @@ Impact: Keeps CPU and memory utilization lean during real-time VAD (Voice Activi
 4. TorchScript Compilation Bypass
 Implementation: Applied the global monkeypatch torch.jit.script = lambda fn: fn.
 Impact: Bypasses strict JIT script compilation checks that often fail or trigger high memory overhead when loading customized or older serialized model architectures in PyTorch.
+
+
+<div align="center">
+
+# Project Name
+### *Your catchy, descriptive one-liner tagline goes here.*
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-CUDA-ee4c2c.svg?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Active-success.svg?style=flat-square)]()
+
+[Features](#key-features) • [Architecture](#system-architecture) • [Tech Stack](#tech-stack) • [Getting Started](#getting-started) • [Usage](#usage)
+
+</div>
+
+---
+
+## Overview
+
+Provide a brief, compelling narrative of what your project is, the problem it solves, and why you built it. Explain the inspiration behind it and what makes it unique compared to existing solutions.
+
+<div align="center">
+  <img src="https://via.placeholder.com/900x450.png?text=Project+Screenshot+or+UI+Preview" alt="Project Preview" width="100%"/>
+</div>
+
+---
+
+## Key Features
+
+* **Real-Time Processing:** Low-latency pipeline optimized for edge processing and rapid local execution.
+* **Advanced Voice & Speech Integration:** Powered by state-of-the-art Speech-to-Text (STT) and custom Text-to-Speech (TTS) models.
+* **Custom Desktop UI:** Sleek, hardware-accelerated user interface built with PySide6 featuring dynamic visualizers and custom widget styling.
+* **Hardware & IoT Interoperability:** Seamlessly bridges software commands with physical microcontrollers, sensors, and fan/lighting controllers.
+* **Robust Error Recovery:** Automatic session fallback handlers and custom audio session management to prevent long-running runtime failures.
+
+---
+
+## System Architecture
+
+Explain how the core components communicate with each other using the flow description or the Mermaid diagram below:
+
+```mermaid
+graph TD
+    A[Microphone / Input] -->|Audio Stream| B(Whisper STT Engine)
+    B -->|Transcribed Text| C{Intent Classifier}
+    C -->|Command / Action| D[Flask Backend Server]
+    D -->|Trigger API / Subprocess| E[Hardware / FanControl / Browser]
+    C -->|Response Generation| F[RVC / TTS Engine]
+    F -->|Audio Synthesis| G[PySide6 UI & Audio Output]
